@@ -1,0 +1,22 @@
+{
+  "members": [
+    {
+      "id": "alice",
+      "name": "Alice",
+      "role": "Security",
+      "skills": ["security", "auth", "rate-limiting"]
+    },
+    {
+      "id": "bob",
+      "name": "Bob",
+      "role": "API Integration",
+      "skills": ["api", "backend", "validation"]
+    },
+    {
+      "id": "carol",
+      "name": "Carol",
+      "role": "Frontend UI",
+      "skills": ["ui", "frontend", "accessibility"]
+    }
+  ]
+}

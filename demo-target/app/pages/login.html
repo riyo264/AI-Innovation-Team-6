@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Sign in</title>
+  <link rel="stylesheet" href="data:text/css,body{font-family:system-ui;max-width:360px;margin:60px auto}input,button{display:block;width:100%;margin:8px 0;padding:8px}" />
+</head>
+<body>
+  <h1>Sign in</h1>
+  <form id="form">
+    <label>Email <input id="email" type="email" required /></label>
+    <label>Password <input id="password" type="password" required /></label>
+    <button id="submit" type="submit">Sign in</button>
+  </form>
+  <p id="message" role="status"></p>
+  <a href="/forgot-password">Forgot password?</a>
+  <script>
+    document.getElementById("form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const email = document.getElementById("email").value;
+      const res = await fetch("/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password: document.getElementById("password").value }),
+      });
+      const data = await res.json();
+      document.getElementById("message").textContent = res.ok ? `Welcome, ${email}` : data.detail;
+    });
+  </script>
+</body>
+</html>
