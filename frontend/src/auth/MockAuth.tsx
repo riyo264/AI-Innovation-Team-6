@@ -1,5 +1,7 @@
-// Hackathon rule: no real auth. A dropdown switches between Manager and a developer.
+// No real auth — a dropdown switches between Manager and a developer.
+// The selected role is synced to localStorage as an X-Token that every API call sends.
 import { createContext, useContext, useState, type ReactNode } from "react";
+import { saveToken } from "../api/client";
 
 export type Viewer = { kind: "manager" } | { kind: "developer"; memberId: string };
 
@@ -24,6 +26,10 @@ function readStoredRun(): string | null {
 export function MockAuthProvider({ children }: { children: ReactNode }) {
   const [viewer, setViewer] = useState<Viewer>({ kind: "manager" });
   const [runId, setRunIdState] = useState<string | null>(readStoredRun);
+
+  // On first load the app starts as "manager", so seed the token immediately.
+  // After that, Header.tsx calls saveToken() on every role switch.
+  useState(() => { saveToken("manager-token"); });
 
   const setRunId = (id: string | null) => {
     setRunIdState(id);

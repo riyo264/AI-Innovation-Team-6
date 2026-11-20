@@ -1,7 +1,31 @@
 import type { DeveloperTask, RunDetail, RunSummary, TaskStatus, Telemetry } from "./types";
 
+const TOKEN_KEY = "harness.token";
+
+/** Read the active token that Header saves whenever the role changes. */
+function getToken(): string {
+  try {
+    return localStorage.getItem(TOKEN_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+/** Save a token so all subsequent requests pick it up automatically. */
+export function saveToken(token: string) {
+  try {
+    localStorage.setItem(TOKEN_KEY, token);
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+/** Every request automatically carries the X-Token header. */
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(path, init);
+  const res = await fetch(path, {
+    ...init,
+    headers: { ...init?.headers, "X-Token": getToken() },
+  });
   if (!res.ok) {
     let detail = res.statusText;
     try {

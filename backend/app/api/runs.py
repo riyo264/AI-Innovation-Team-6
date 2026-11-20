@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, s
 from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_pipeline, get_session
+from app.api.deps import get_pipeline, get_session, require_role
 from app.schemas.api import RunCreated, RunDetail, RunSummary
 from app.schemas.delegation import ManagerApproval
 from app.services import queries
@@ -20,6 +20,7 @@ Pipeline = Annotated[PipelineService, Depends(get_pipeline)]
 @router.post("", response_model=RunCreated, status_code=status.HTTP_202_ACCEPTED)
 async def create_run(
     pipeline: Pipeline,
+    _: dict = require_role("manager"),
     prd_file: UploadFile | None = File(None),
     prd_text: str | None = Form(None),
     team_file: UploadFile | None = File(None),
@@ -63,7 +64,8 @@ async def get_run(run_id: str, session: Session):
 
 
 @router.post("/{run_id}/approve")
-async def approve_run(run_id: str, approval: ManagerApproval, pipeline: Pipeline):
+async def approve_run(run_id: str, approval: ManagerApproval, pipeline: Pipeline,
+                      _: dict = require_role("manager")):
     """Stage 4. Manager's final assignments; resumes the paused LangGraph thread."""
     try:
         return await pipeline.approve(run_id, approval)
@@ -72,7 +74,8 @@ async def approve_run(run_id: str, approval: ManagerApproval, pipeline: Pipeline
 
 
 @router.post("/{run_id}/execute", status_code=status.HTTP_202_ACCEPTED)
-async def rerun_execution(run_id: str, pipeline: Pipeline):
+async def rerun_execution(run_id: str, pipeline: Pipeline,
+                          _: dict = require_role("manager")):
     """Re-run the approved suite (e.g. after fixing the demo target live on stage)."""
     if pipeline.executor is None:
         raise HTTPException(status.HTTP_409_CONFLICT, "execution engine is disabled")

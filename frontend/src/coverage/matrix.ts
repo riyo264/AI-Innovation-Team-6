@@ -84,12 +84,20 @@ export function buildCoverage(requirements: Requirement[], testCases: TestCase[]
   const rows = [...requirements]
     .sort((a, b) => a.id.localeCompare(b.id))
     .map((requirement) => {
+      // Guard: acceptance_criteria may be missing or malformed in old/mock runs
+      const acceptance_criteria: AcceptanceCriterion[] = Array.isArray(requirement.acceptance_criteria)
+        ? requirement.acceptance_criteria.filter(
+            (c): c is AcceptanceCriterion =>
+              c != null && typeof c === "object" && typeof c.id === "string" && typeof c.text === "string",
+          )
+        : [];
+
       const tests = testsFor.get(requirement.id) ?? [];
       const byType = emptyByType();
       for (const testCase of tests) byType[testCase.test_type].push(testCase);
 
       // Build criteria views using explicit covers_criteria linkage (no heuristics)
-      const criteria: CriterionView[] = requirement.acceptance_criteria.map((criterion) => {
+      const criteria: CriterionView[] = acceptance_criteria.map((criterion) => {
         const coveredBy = tests
           .filter((tc) => tc.covers_criteria?.includes(criterion.id))
           .map((tc) => tc.id);
@@ -100,7 +108,7 @@ export function buildCoverage(requirements: Requirement[], testCases: TestCase[]
       const push = (suffix: string, message: string) =>
         gaps.push({ id: `${requirement.id}:${suffix}`, requirementId: requirement.id, message });
 
-      if (requirement.acceptance_criteria.length === 0) {
+      if (acceptance_criteria.length === 0) {
         push("criteria", `${requirement.id} has no acceptance criteria.`);
       }
       if (requirement.ambiguous) {
@@ -142,7 +150,7 @@ export function buildCoverage(requirements: Requirement[], testCases: TestCase[]
         }
       }
 
-      return { requirement, criteria, byType, expected, gaps };
+      return { requirement: { ...requirement, acceptance_criteria }, criteria, byType, expected, gaps };
     });
 
   return { rows, gaps: rows.flatMap((row) => row.gaps) };
