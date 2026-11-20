@@ -4,8 +4,10 @@ Checks, per item:
   1. JSON decodes                          -> json_decode
   2. Pydantic TestCaseDraft schema         -> schema
   3. source_requirement_id is a known REQ  -> traceability
+  4. covers_criteria refs valid AC IDs     -> criterion_id_unknown
 Then across the whole suite:
-  4. every requirement has >= 1 test case  -> coverage
+  5. every requirement has >= 1 test case  -> coverage
+  6. every criterion has >= 1 test         -> criterion_uncovered
 
 Valid items are kept (and given harness IDs); only failures are sent back to the Generator.
 """
@@ -26,12 +28,21 @@ def _format_pydantic(exc: ValidationError) -> str:
     )
 
 
+def _ac_ids_for_requirement(requirements: list[dict], req_id: str) -> set[str]:
+    """Return the set of AC IDs declared on a requirement."""
+    for req in requirements:
+        if req["id"] == req_id:
+            return {ac["id"] for ac in req.get("acceptance_criteria", [])}
+    return set()
+
+
 def validate_generation(
     raw: str,
-    requirement_ids: set[str],
+    requirements: list[dict],
     already_valid: list[dict],
     attempt: int,
 ) -> tuple[list[dict], list[ValidationFailure]]:
+    requirement_ids = {r["id"] for r in requirements}
     failures: list[ValidationFailure] = []
     new_valid: list[dict] = []
 
@@ -69,6 +80,7 @@ def validate_generation(
             )
             continue
 
+        # Check 3: source_requirement_id must be a known REQ
         if draft.source_requirement_id not in requirement_ids:
             failures.append(
                 ValidationFailure(
@@ -84,12 +96,33 @@ def validate_generation(
             )
             continue
 
+        # Check 4: every AC ID in covers_criteria must belong to source_requirement_id
+        if draft.covers_criteria:
+            valid_ac_ids = _ac_ids_for_requirement(requirements, draft.source_requirement_id)
+            unknown = [ac for ac in draft.covers_criteria if ac not in valid_ac_ids]
+            if unknown:
+                failures.append(
+                    ValidationFailure(
+                        attempt=attempt,
+                        error_type="criterion_id_unknown",
+                        item_index=idx,
+                        message=(
+                            f"covers_criteria contains unknown AC IDs {unknown} for "
+                            f"{draft.source_requirement_id}. "
+                            f"Valid AC IDs: {sorted(valid_ac_ids) or 'none (no criteria defined)'}"
+                        ),
+                        raw_excerpt=excerpt(item),
+                    )
+                )
+                continue
+
         case = TestCase(id=f"TC-{next_number:03d}", **draft.model_dump())
         new_valid.append(case.model_dump(mode="json"))
         next_number += 1
 
-    covered = {tc["source_requirement_id"] for tc in already_valid + new_valid}
-    for req_id in sorted(requirement_ids - covered):
+    # Check 5: every requirement has at least one test
+    covered_reqs = {tc["source_requirement_id"] for tc in already_valid + new_valid}
+    for req_id in sorted(requirement_ids - covered_reqs):
         failures.append(
             ValidationFailure(
                 attempt=attempt,
@@ -99,15 +132,43 @@ def validate_generation(
             )
         )
 
+    # Check 6: every criterion has at least one test pointing to it
+    # Build a map: criterion_id -> list of test case IDs that cover it
+    all_valid = already_valid + new_valid
+    covered_criteria: dict[str, list[str]] = {}
+    for tc in all_valid:
+        for ac_id in tc.get("covers_criteria", []):
+            covered_criteria.setdefault(ac_id, []).append(tc["id"])
+
+    for req in requirements:
+        for ac in req.get("acceptance_criteria", []):
+            if ac.get("ambiguous"):
+                continue  # ambiguous criteria can't be tested; skip
+            ac_id = ac["id"]
+            req_id = req["id"]
+            if ac_id not in covered_criteria:
+                failures.append(
+                    ValidationFailure(
+                        attempt=attempt,
+                        error_type="criterion_uncovered",
+                        requirement_id=req_id,
+                        criterion_id=ac_id,
+                        message=(
+                            f"{ac_id} on {req_id} has no test. "
+                            f"Generate a test with covers_criteria containing \"{ac_id}\". "
+                            f"Criterion text: \"{ac['text']}\""
+                        ),
+                    )
+                )
+
     return new_valid, failures
 
 
 async def validator(state: PipelineState) -> dict:
     attempt = state.get("retry_count", 0)
-    requirement_ids = {r["id"] for r in state["requirements"]}
     new_valid, failures = validate_generation(
         state.get("raw_generation", ""),
-        requirement_ids,
+        state["requirements"],
         state.get("valid_test_cases", []),
         attempt,
     )

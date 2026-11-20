@@ -41,7 +41,7 @@ def test_full_approval_flow(client, prd_text, team_members):
     run = wait_for(client, run_id, "awaiting_approval")
     assert run["status"] == "awaiting_approval", run.get("error")
     assert len(run["test_cases"]) == 14
-    assert len(run["validation_failures"]) == 2
+    assert len(run["validation_failures"]) == 4
     unassigned = [a for a in run["assignments"] if a["ai_assignee_id"] == "unassigned"]
     assert unassigned, "the 'email' test should land in the Unassigned bucket"
 
@@ -63,7 +63,8 @@ def test_full_approval_flow(client, prd_text, team_members):
     telemetry = client.get("/api/telemetry", params={"run_id": run_id}).json()
     assert telemetry["overrides"] == 1
     assert telemetry["retry_loops_total"] == 1
-    assert telemetry["validation_failures_total"] == 2
+    assert telemetry["validation_failures_total"] == 4
+
 
 
 def test_approve_twice_conflicts(client, prd_text, team_members):

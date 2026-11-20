@@ -79,6 +79,10 @@ class TestCaseDraft(BaseModel):
     steps_description: list[str] = Field(min_length=1)
     expected_result: str = Field(min_length=5)
     confidence: float = Field(ge=0.0, le=1.0)
+    covers_criteria: list[str] = Field(
+        default_factory=list,
+        description="AC-REQ.N IDs this test proves. Must reference criteria of source_requirement_id.",
+    )
     spec: TestSpec
 
     @field_validator("tags")

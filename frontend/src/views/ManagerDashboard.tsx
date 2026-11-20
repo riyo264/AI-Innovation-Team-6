@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
 import { UNASSIGNED, type ExecutionStatus, type RunDetail } from "../api/types";
+import { CoverageMatrix } from "../components/CoverageMatrix";
 import { LiveConsole } from "../components/LiveConsole";
 import { StatusBadge } from "../components/StatusBadge";
 import { TestCaseCard } from "../components/TestCaseCard";
+import { buildCoverage } from "../coverage/matrix";
 
 interface Props {
   run: RunDetail;
@@ -12,9 +14,12 @@ interface Props {
   onChanged: () => void;
 }
 
-/** Manager Approval Dashboard: test cases grouped by assignee, drag to reassign, approve. */
+type ReviewStep = "coverage" | "assign";
+
+/** Coverage first, then the assignment board. Drag-and-drop stays the second step. */
 export function ManagerDashboard({ run, logs, liveResults, onChanged }: Props) {
   const editable = run.status === "awaiting_approval";
+  const [step, setStep] = useState<ReviewStep>("coverage");
   const [decisions, setDecisions] = useState<Record<string, string>>({});
   const [dragOver, setDragOver] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -37,6 +42,10 @@ export function ManagerDashboard({ run, logs, liveResults, onChanged }: Props) {
     { id: UNASSIGNED, title: "Unassigned (needs a decision)" },
   ];
   const overrides = run.assignments.filter((a) => decisions[a.test_case_id] !== a.ai_assignee_id).length;
+  const gapCount = useMemo(
+    () => buildCoverage(run.requirements, run.test_cases).gaps.length,
+    [run.requirements, run.test_cases],
+  );
 
   function drop(columnId: string, e: React.DragEvent) {
     e.preventDefault();
@@ -70,12 +79,25 @@ export function ManagerDashboard({ run, logs, liveResults, onChanged }: Props) {
         <h2>
           2 · Review & approve <StatusBadge status={run.status} />
         </h2>
+        <div className="steps">
+          <button className={step === "coverage" ? "active" : ""} onClick={() => setStep("coverage")}>
+            1 · Coverage{gapCount > 0 ? ` · ${gapCount} gap${gapCount === 1 ? "" : "s"}` : ""}
+          </button>
+          <button className={step === "assign" ? "active" : ""} onClick={() => setStep("assign")}>
+            2 · Assign
+          </button>
+        </div>
         <span>
           {run.test_cases.length} test cases · {run.requirements.length} requirements ·{" "}
           {run.validation_failures.length} schema errors self-corrected · {overrides} manual override
           {overrides === 1 ? "" : "s"}
         </span>
-        {editable && (
+        {step === "coverage" && (
+          <button className="primary" onClick={() => setStep("assign")}>
+            {gapCount > 0 ? `Accept coverage with ${gapCount} gap${gapCount === 1 ? "" : "s"}` : "Accept coverage & assign"}
+          </button>
+        )}
+        {step === "assign" && editable && (
           <button className="primary" onClick={approve} disabled={busy}>
             {busy ? "Approving…" : "Approve & Distribute"}
           </button>
@@ -87,7 +109,9 @@ export function ManagerDashboard({ run, logs, liveResults, onChanged }: Props) {
         {exhausted && <p className="warn-text">Retry budget exhausted; some requirements may be uncovered.</p>}
       </section>
 
-      <div className="board">
+      {step === "coverage" && <CoverageMatrix run={run} liveResults={liveResults} />}
+
+      {step === "assign" && <div className="board">
         {columns.map((col) => {
           const cases = run.test_cases.filter((tc) => (decisions[tc.id] ?? UNASSIGNED) === col.id);
           return (
@@ -119,7 +143,7 @@ export function ManagerDashboard({ run, logs, liveResults, onChanged }: Props) {
             </section>
           );
         })}
-      </div>
+      </div>}
 
       {run.status !== "awaiting_approval" && <LiveConsole lines={logs} />}
     </div>

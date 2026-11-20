@@ -13,12 +13,20 @@ export type TestType = "positive" | "negative" | "boundary" | "security";
 
 export const UNASSIGNED = "unassigned";
 
+export interface AcceptanceCriterion {
+  id: string;             // e.g. "AC-006.1"
+  text: string;
+  source_quote: string | null;
+  ambiguous: boolean;
+  ambiguity_note: string | null;
+}
+
 export interface Requirement {
   id: string;
   title: string;
   description: string;
   tags: string[];
-  acceptance_criteria: string[];
+  acceptance_criteria: AcceptanceCriterion[];
   ambiguous: boolean;
   ambiguity_note: string | null;
 }
@@ -48,6 +56,7 @@ export interface TestCase {
   steps_description: string[];
   expected_result: string;
   confidence: number;
+  covers_criteria: string[];
   spec: ApiSpec | UiSpec;
 }
 

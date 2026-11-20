@@ -18,7 +18,9 @@ async def test_pauses_after_delegator_then_resumes_with_overrides(prd_text, team
     assert snap.next == ("distributor",)  # interrupt_after=["delegator"]
     assert snap.values["retry_count"] == 1  # self-corrected once
     assert len(snap.values["valid_test_cases"]) == 14
-    assert {f["error_type"] for f in snap.values["validation_log"]} == {"schema", "traceability"}
+    assert {f["error_type"] for f in snap.values["validation_log"]} == {
+        "schema", "traceability", "criterion_uncovered"
+    }
     assert all(tc["source_requirement_id"].startswith("REQ-") for tc in snap.values["valid_test_cases"])
 
     plan = snap.values["delegation_plan"]["assignments"]

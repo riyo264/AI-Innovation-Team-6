@@ -1,6 +1,29 @@
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 REQ_ID_PATTERN = r"^REQ-\d{3}$"
+AC_ID_PATTERN = r"^AC-\d{3}\.\d+$"
+
+
+class AcceptanceCriterion(BaseModel):
+    """A single measurable acceptance criterion attached to a Requirement."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(
+        pattern=AC_ID_PATTERN,
+        description="Stable ID, e.g. AC-006.1 (derived from parent REQ-006)",
+    )
+    text: str = Field(min_length=5, description="Given/When/Then or plain statement")
+    source_quote: str | None = Field(
+        default=None, description="Verbatim phrase from the PRD that this criterion encodes"
+    )
+    ambiguous: bool = Field(
+        default=False,
+        description="True when the PRD gives no measurable threshold for this criterion",
+    )
+    ambiguity_note: str | None = Field(
+        default=None, description="Why this criterion is ambiguous and what is missing"
+    )
 
 
 class Requirement(BaseModel):
@@ -12,7 +35,7 @@ class Requirement(BaseModel):
     title: str = Field(min_length=3)
     description: str = Field(min_length=10)
     tags: list[str] = Field(min_length=1, description="e.g. security, api, ui, validation")
-    acceptance_criteria: list[str] = Field(default_factory=list)
+    acceptance_criteria: list[AcceptanceCriterion] = Field(default_factory=list)
     ambiguous: bool = False
     ambiguity_note: str | None = None
 
