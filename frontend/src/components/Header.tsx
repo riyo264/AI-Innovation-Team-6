@@ -27,7 +27,7 @@ export function Header({ team, runStatus }: { team: Member[]; runStatus?: string
     const selected = e.target.value;
     // 1. Update the token so the very next API call uses the right identity.
     saveToken(tokenFor(selected));
-    // 2. Update the UI so the correct view renders.
+    // 2. Update the UI so the correct view renders with changes.
     setViewer(selected === "manager"
       ? { kind: "manager" }
       : { kind: "developer", memberId: selected });
