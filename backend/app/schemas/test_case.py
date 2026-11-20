@@ -97,3 +97,15 @@ class TestCase(TestCaseDraft):
     __test__ = False
 
     id: str = Field(pattern=TC_ID_PATTERN)
+
+
+class TestCaseUpdate(BaseModel):
+    """Fields a manager can edit before approving a generated test plan."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    title: str = Field(min_length=5, max_length=500)
+    preconditions: list[str]
+    steps_description: list[str] = Field(min_length=1)
+    expected_result: str = Field(min_length=5)
+    spec: TestSpec

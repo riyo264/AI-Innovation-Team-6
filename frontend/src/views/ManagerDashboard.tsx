@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
-import { UNASSIGNED, type ExecutionStatus, type RunDetail } from "../api/types";
+import { UNASSIGNED, type ExecutionStatus, type RunDetail, type TestCaseUpdate } from "../api/types";
 import { CoverageMatrix } from "../components/CoverageMatrix";
 import { LiveConsole } from "../components/LiveConsole";
 import { StatusBadge } from "../components/StatusBadge";
@@ -11,7 +11,7 @@ interface Props {
   run: RunDetail;
   logs: string[];
   liveResults: Record<string, ExecutionStatus>;
-  onChanged: () => void;
+  onChanged: () => Promise<void>;
 }
 
 type ReviewStep = "coverage" | "assign";
@@ -23,6 +23,7 @@ export function ManagerDashboard({ run, logs, liveResults, onChanged }: Props) {
   const [decisions, setDecisions] = useState<Record<string, string>>({});
   const [dragOver, setDragOver] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -63,12 +64,29 @@ export function ManagerDashboard({ run, logs, liveResults, onChanged }: Props) {
         run.id,
         Object.entries(decisions).map(([test_case_id, assignee_id]) => ({ test_case_id, assignee_id })),
       );
-      onChanged();
+      await onChanged();
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setBusy(false);
     }
+  }
+
+  async function exportRun() {
+    setExporting(true);
+    setError(null);
+    try {
+      await api.exportRun(run.id);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  async function updateTestCase(caseId: string, update: TestCaseUpdate) {
+    await api.updateTestCase(run.id, caseId, update);
+    await onChanged();
   }
 
   const exhausted = run.validation_failures.some((f) => f.attempt >= 3);
@@ -92,6 +110,9 @@ export function ManagerDashboard({ run, logs, liveResults, onChanged }: Props) {
           {run.validation_failures.length} schema errors self-corrected · {overrides} manual override
           {overrides === 1 ? "" : "s"}
         </span>
+        <button onClick={exportRun} disabled={exporting}>
+          {exporting ? "Exporting…" : "Download JSON"}
+        </button>
         {step === "coverage" && (
           <button className="primary" onClick={() => setStep("assign")}>
             {gapCount > 0 ? `Accept coverage with ${gapCount} gap${gapCount === 1 ? "" : "s"}` : "Accept coverage & assign"}
@@ -109,7 +130,14 @@ export function ManagerDashboard({ run, logs, liveResults, onChanged }: Props) {
         {exhausted && <p className="warn-text">Retry budget exhausted; some requirements may be uncovered.</p>}
       </section>
 
-      {step === "coverage" && <CoverageMatrix run={run} liveResults={liveResults} />}
+      {step === "coverage" && (
+        <CoverageMatrix
+          run={run}
+          liveResults={liveResults}
+          editable={editable}
+          onSaveTestCase={updateTestCase}
+        />
+      )}
 
       {step === "assign" && <div className="board">
         {columns.map((col) => {

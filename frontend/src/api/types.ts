@@ -60,6 +60,14 @@ export interface TestCase {
   spec: ApiSpec | UiSpec;
 }
 
+export interface TestCaseUpdate {
+  title: string;
+  preconditions: string[];
+  steps_description: string[];
+  expected_result: string;
+  spec: unknown;
+}
+
 export interface Member {
   id: string;
   name: string;

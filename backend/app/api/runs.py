@@ -1,12 +1,16 @@
+import json
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile, status
 from pydantic import ValidationError
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_pipeline, get_session, require_role
+from app.db.models import AuditLog, Run, TestCaseRow
 from app.schemas.api import RunCreated, RunDetail, RunSummary
 from app.schemas.delegation import ManagerApproval
+from app.schemas.test_case import TestCase, TestCaseUpdate
 from app.services import queries
 from app.services.parsing import InputError, parse_team, prd_to_text
 from app.services.pipeline import PipelineError, PipelineService
@@ -61,6 +65,53 @@ async def get_run(run_id: str, session: Session):
     if detail is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "run not found")
     return detail
+
+
+@router.get("/{run_id}/export", response_class=Response)
+async def export_run(run_id: str, session: Session, _: dict = require_role("manager")):
+    detail = await queries.run_detail(session, run_id)
+    if detail is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "run not found")
+    return Response(
+        content=json.dumps(detail.model_dump(mode="json"), indent=2),
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="test-plan-{run_id}.json"'},
+    )
+
+
+@router.patch("/{run_id}/test-cases/{case_id}", response_model=TestCase)
+async def update_test_case(
+    run_id: str,
+    case_id: str,
+    update: TestCaseUpdate,
+    session: Session,
+    user: dict = require_role("manager"),
+):
+    run = await session.get(Run, run_id)
+    if run is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "run not found")
+    if run.status != "awaiting_approval":
+        raise HTTPException(status.HTTP_409_CONFLICT, "test cases can only be edited before approval")
+
+    case = await session.scalar(
+        select(TestCaseRow).where(TestCaseRow.run_id == run_id, TestCaseRow.case_key == case_id)
+    )
+    if case is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "test case not found")
+
+    updated = TestCase.model_validate({**case.payload, **update.model_dump()})
+    case.payload = updated.model_dump(mode="json")
+    case.title = updated.title
+    case.test_type = updated.test_type.value
+    case.kind = updated.spec.kind
+    session.add(AuditLog(
+        run_id=run_id,
+        actor=user["id"],
+        event="test_case_edited",
+        details={"test_case_id": case_id},
+    ))
+    await session.commit()
+    return updated
 
 
 @router.post("/{run_id}/approve")

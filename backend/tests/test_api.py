@@ -16,7 +16,7 @@ def client(tmp_path):
         llm_provider="mock",
         execute_on_approval=False,
     )
-    with TestClient(create_app(settings)) as c:
+    with TestClient(create_app(settings), headers={"X-Token": "manager-token"}) as c:
         yield c
 
 
@@ -42,6 +42,21 @@ def test_full_approval_flow(client, prd_text, team_members):
     assert run["status"] == "awaiting_approval", run.get("error")
     assert len(run["test_cases"]) == 14
     assert len(run["validation_failures"]) == 4
+    test_case = run["test_cases"][0]
+    edit = {
+        "title": "Manager-edited case title",
+        "preconditions": test_case["preconditions"],
+        "steps_description": ["Manager-edited step"],
+        "expected_result": "The edited expected result is shown.",
+        "spec": test_case["spec"],
+    }
+    edit_response = client.patch(
+        f"/api/runs/{run_id}/test-cases/{test_case['id']}",
+        json=edit,
+    )
+    assert edit_response.status_code == 200, edit_response.text
+    assert client.get(f"/api/runs/{run_id}").json()["test_cases"][0]["title"] == edit["title"]
+
     unassigned = [a for a in run["assignments"] if a["ai_assignee_id"] == "unassigned"]
     assert unassigned, "the 'email' test should land in the Unassigned bucket"
 
@@ -56,6 +71,15 @@ def test_full_approval_flow(client, prd_text, team_members):
 
     run = client.get(f"/api/runs/{run_id}").json()
     assert run["status"] == "approved"
+    assert client.patch(
+        f"/api/runs/{run_id}/test-cases/{test_case['id']}",
+        json=edit,
+    ).status_code == 409
+
+    exported = client.get(f"/api/runs/{run_id}/export")
+    assert exported.status_code == 200
+    assert exported.headers["content-disposition"].endswith(f'"test-plan-{run_id}.json"')
+    assert exported.json()["test_cases"][0]["title"] == edit["title"]
 
     tasks = client.get(f"/api/runs/{run_id}/developers/bob/tasks").json()
     assert unassigned[0]["test_case_id"] in {t["test_case"]["id"] for t in tasks}

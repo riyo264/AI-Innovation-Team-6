@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { ExecutionStatus, RunDetail, TestCase } from "../api/types";
+import type { ExecutionStatus, RunDetail, TestCase, TestCaseUpdate } from "../api/types";
 import {
   TEST_TYPES,
   buildCoverage,
@@ -9,15 +9,18 @@ import {
   type MatrixRow,
 } from "../coverage/matrix";
 import { StatusBadge } from "./StatusBadge";
+import { TestCaseEditor } from "./TestCaseEditor";
 
 interface Props {
   run: RunDetail;
   liveResults: Record<string, ExecutionStatus>;
+  editable: boolean;
+  onSaveTestCase: (caseId: string, update: TestCaseUpdate) => Promise<void>;
 }
 
 type Selection = { kind: "test"; id: string } | { kind: "requirement"; id: string };
 
-export function CoverageMatrix({ run, liveResults }: Props) {
+export function CoverageMatrix({ run, liveResults, editable, onSaveTestCase }: Props) {
   const model = useMemo(
     () => buildCoverage(run.requirements, run.test_cases),
     [run.requirements, run.test_cases],
@@ -89,6 +92,7 @@ export function CoverageMatrix({ run, liveResults }: Props) {
 
       {selected && (
         <CoverageDetail
+          key={selected.test?.id ?? selected.row.requirement.id}
           row={selected.row}
           test={selected.test}
           status={
@@ -96,6 +100,8 @@ export function CoverageMatrix({ run, liveResults }: Props) {
               ? executionStatus(selected.test.id, liveResults, run.executions)
               : null
           }
+          editable={editable}
+          onSaveTestCase={onSaveTestCase}
           onClose={() => setSelection(null)}
         />
       )}
@@ -238,14 +244,19 @@ function CoverageDetail({
   row,
   test,
   status,
+  editable,
+  onSaveTestCase,
   onClose,
 }: {
   row: MatrixRow;
   test: TestCase | null;
   status: ExecutionStatus | null;
+  editable: boolean;
+  onSaveTestCase: (caseId: string, update: TestCaseUpdate) => Promise<void>;
   onClose: () => void;
 }) {
   const { requirement } = row;
+  const [editing, setEditing] = useState(false);
 
   // When a test is selected, show only the criteria it explicitly covers.
   // When a requirement is selected, show all criteria.
@@ -259,9 +270,21 @@ function CoverageDetail({
         <h2>{test ? test.id : requirement.id}</h2>
         {test && <span className={`type type-${test.test_type}`}>{test.test_type}</span>}
         {status && <StatusBadge status={status} />}
+        {test && editable && !editing && (
+          <button onClick={() => setEditing(true)}>Edit test case</button>
+        )}
         <button onClick={onClose}>Close</button>
       </div>
-      <div className="detail-grid">
+      {editing && test ? (
+        <TestCaseEditor
+          testCase={test}
+          onSave={async (update) => {
+            await onSaveTestCase(test.id, update);
+            setEditing(false);
+          }}
+          onCancel={() => setEditing(false)}
+        />
+      ) : <div className="detail-grid">
         <div>
           {test ? (
             <>
@@ -339,7 +362,7 @@ function CoverageDetail({
             </p>
           )}
         </div>
-      </div>
+      </div>}
     </section>
   );
 }

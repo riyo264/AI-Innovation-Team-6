@@ -51,6 +51,7 @@ select { padding: 4px 8px; border-radius: 6px; border: 1px solid var(--border); 
 .card .title { margin: 6px 0 4px; font-size: 13px; font-weight: 500; }
 .card details { margin-top: 6px; font-size: 12px; }
 .card summary { cursor: pointer; color: var(--muted); }
+.test-case-editor { margin-top: 16px; }
 .tags { display: flex; gap: 4px; flex-wrap: wrap; }
 .tag { background: #eef0f4; border-radius: 4px; padding: 1px 6px; font-size: 11px; }
 .type { border-radius: 4px; padding: 1px 6px; font-size: 11px; background: #eef0f4; }

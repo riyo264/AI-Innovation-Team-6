@@ -1,4 +1,4 @@
-import type { DeveloperTask, RunDetail, RunSummary, TaskStatus, Telemetry } from "./types";
+import type { DeveloperTask, RunDetail, RunSummary, TaskStatus, Telemetry, TestCase, TestCaseUpdate } from "./types";
 
 const TOKEN_KEY = "harness.token";
 
@@ -54,6 +54,34 @@ export const api = {
   },
   listRuns: () => request<RunSummary[]>("/api/runs"),
   getRun: (id: string) => request<RunDetail>(`/api/runs/${id}`),
+  updateTestCase: (runId: string, caseId: string, update: TestCaseUpdate) =>
+    request<TestCase>(`/api/runs/${runId}/test-cases/${caseId}`, {
+      ...json(update),
+      method: "PATCH",
+    }),
+  exportRun: async (id: string) => {
+    const res = await fetch(`/api/runs/${id}/export`, {
+      headers: { "X-Token": getToken() },
+    });
+    if (!res.ok) {
+      let detail = res.statusText;
+      try {
+        detail = (await res.json()).detail ?? detail;
+      } catch {
+        /* non-JSON error body */
+      }
+      throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+    }
+
+    const url = URL.createObjectURL(await res.blob());
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `test-plan-${id}.json`;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  },
   approve: (id: string, assignments: { test_case_id: string; assignee_id: string }[]) =>
     request<{ overrides: unknown[] }>(
       `/api/runs/${id}/approve`,
