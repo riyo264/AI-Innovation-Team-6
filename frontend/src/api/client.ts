@@ -1,4 +1,13 @@
-import type { DeveloperTask, RunDetail, RunSummary, TaskStatus, Telemetry, TestCase, TestCaseUpdate } from "./types";
+import type {
+  DeveloperTask,
+  RunDetail,
+  RunSummary,
+  TaskStatus,
+  Telemetry,
+  TestCase,
+  TestCaseCreate,
+  TestCaseUpdate,
+} from "./types";
 
 const TOKEN_KEY = "harness.token";
 
@@ -27,15 +36,27 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     headers: { ...init?.headers, "X-Token": getToken() },
   });
   if (!res.ok) {
-    let detail = res.statusText;
-    try {
-      detail = (await res.json()).detail ?? detail;
-    } catch {
-      /* non-JSON error body */
-    }
-    throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+    throw new Error(await responseError(res));
   }
   return res.json() as Promise<T>;
+}
+
+async function requestVoid(path: string, init?: RequestInit): Promise<void> {
+  const res = await fetch(path, {
+    ...init,
+    headers: { ...init?.headers, "X-Token": getToken() },
+  });
+  if (!res.ok) throw new Error(await responseError(res));
+}
+
+async function responseError(res: Response): Promise<string> {
+  let detail = res.statusText;
+  try {
+    detail = (await res.json()).detail ?? detail;
+  } catch {
+    /* non-JSON error body */
+  }
+  return typeof detail === "string" ? detail : JSON.stringify(detail);
 }
 
 const json = (body: unknown): RequestInit => ({
@@ -59,19 +80,15 @@ export const api = {
       ...json(update),
       method: "PATCH",
     }),
+  createTestCase: (runId: string, draft: TestCaseCreate) =>
+    request<TestCase>(`/api/runs/${runId}/test-cases`, json(draft)),
+  deleteTestCase: (runId: string, caseId: string) =>
+    requestVoid(`/api/runs/${runId}/test-cases/${caseId}`, { method: "DELETE" }),
   exportRun: async (id: string) => {
     const res = await fetch(`/api/runs/${id}/export`, {
       headers: { "X-Token": getToken() },
     });
-    if (!res.ok) {
-      let detail = res.statusText;
-      try {
-        detail = (await res.json()).detail ?? detail;
-      } catch {
-        /* non-JSON error body */
-      }
-      throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
-    }
+    if (!res.ok) throw new Error(await responseError(res));
 
     const url = URL.createObjectURL(await res.blob());
     const link = document.createElement("a");

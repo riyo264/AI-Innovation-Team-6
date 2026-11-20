@@ -173,10 +173,37 @@ class PipelineService:
                 raise PipelineError("run not found")
             if run.status != "awaiting_approval":
                 raise PipelineError(f"run is '{run.status}', not awaiting approval")
-            valid_cases = set((await s.scalars(
-                select(TestCaseRow.case_key).where(TestCaseRow.run_id == run_id))).all())
+            case_rows = (await s.scalars(
+                select(TestCaseRow)
+                .where(TestCaseRow.run_id == run_id)
+                .order_by(TestCaseRow.case_key)
+            )).all()
+            assignment_rows = (await s.scalars(
+                select(TaskAssignmentRow).where(TaskAssignmentRow.run_id == run_id)
+            )).all()
+            assignments_by_case = {assignment.case_key: assignment for assignment in assignment_rows}
+            valid_cases = {case.case_key for case in case_rows}
             valid_members = set((await s.scalars(
                 select(TeamMember.member_key).where(TeamMember.run_id == run_id))).all())
+            delegation_plan = {
+                "assignments": [
+                    {
+                        "test_case_id": case.case_key,
+                        "assignee_id": (
+                            assignment.ai_assignee if assignment else UNASSIGNED
+                        ),
+                        "reasoning": (
+                            assignment.reasoning if assignment
+                            else "No proposed assignee; manager to choose before approval."
+                        ),
+                        "matched_skills": assignment.matched_skills if assignment else [],
+                        "confidence": assignment.confidence if assignment else 0.0,
+                        "needs_manager_review": assignment.needs_manager_review if assignment else True,
+                    }
+                    for case in case_rows
+                    for assignment in [assignments_by_case.get(case.case_key)]
+                ]
+            }
 
         for d in approval.assignments:
             if d.test_case_id not in valid_cases:
@@ -189,7 +216,13 @@ class PipelineService:
             raise PipelineError(f"graph is not paused at the approval breakpoint ({snapshot.next})")
 
         # Inject the manager's decision into the checkpointed state, then resume.
-        await self.graph.aupdate_state(_thread(run_id), {"approved_plan": approval.model_dump()})
+        await self.graph.aupdate_state(
+            _thread(run_id),
+            {
+                "delegation_plan": delegation_plan,
+                "approved_plan": approval.model_dump(),
+            },
+        )
         await self._stream(run_id, None)
         values = (await self.graph.aget_state(_thread(run_id))).values
 

@@ -68,6 +68,14 @@ export interface TestCaseUpdate {
   spec: unknown;
 }
 
+export interface TestCaseCreate extends TestCaseUpdate {
+  source_requirement_id: string;
+  test_type: TestType;
+  tags: string[];
+  confidence: number;
+  covers_criteria: string[];
+}
+
 export interface Member {
   id: string;
   name: string;

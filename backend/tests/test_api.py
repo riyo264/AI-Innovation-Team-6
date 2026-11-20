@@ -60,6 +60,43 @@ def test_full_approval_flow(client, prd_text, team_members):
     unassigned = [a for a in run["assignments"] if a["ai_assignee_id"] == "unassigned"]
     assert unassigned, "the 'email' test should land in the Unassigned bucket"
 
+    draft = {
+        "title": "Manager-added test case",
+        "source_requirement_id": run["requirements"][0]["id"],
+        "test_type": "positive",
+        "tags": ["manager-added"],
+        "preconditions": [],
+        "steps_description": ["Call the endpoint with a valid request"],
+        "expected_result": "The endpoint responds successfully.",
+        "confidence": 1.0,
+        "covers_criteria": [],
+        "spec": {
+            "kind": "api",
+            "method": "GET",
+            "path": "/api/health",
+            "repeat": 1,
+            "expected_status": 200,
+            "expected_body_contains": [],
+        },
+    }
+    added_response = client.post(f"/api/runs/{run_id}/test-cases", json=draft)
+    assert added_response.status_code == 201, added_response.text
+    added_case = added_response.json()
+
+    deleted_case_id = next(
+        case["id"]
+        for case in run["test_cases"]
+        if case["id"] != test_case["id"] and case["id"] != unassigned[0]["test_case_id"]
+    )
+    delete_response = client.delete(f"/api/runs/{run_id}/test-cases/{deleted_case_id}")
+    assert delete_response.status_code == 204
+
+    run = client.get(f"/api/runs/{run_id}").json()
+    assert len(run["test_cases"]) == 14
+    assert added_case["id"] in {case["id"] for case in run["test_cases"]}
+    assert deleted_case_id not in {case["id"] for case in run["test_cases"]}
+    assert run["test_cases"][0]["title"] == edit["title"]
+
     decisions = [{"test_case_id": a["test_case_id"], "assignee_id": a["final_assignee_id"]}
                  for a in run["assignments"]]
     decisions = [{**d, "assignee_id": "bob"} if d["test_case_id"] == unassigned[0]["test_case_id"]
@@ -75,11 +112,18 @@ def test_full_approval_flow(client, prd_text, team_members):
         f"/api/runs/{run_id}/test-cases/{test_case['id']}",
         json=edit,
     ).status_code == 409
+    assert client.post(f"/api/runs/{run_id}/test-cases", json=draft).status_code == 409
+    assert client.delete(
+        f"/api/runs/{run_id}/test-cases/{test_case['id']}"
+    ).status_code == 409
 
     exported = client.get(f"/api/runs/{run_id}/export")
     assert exported.status_code == 200
     assert exported.headers["content-disposition"].endswith(f'"test-plan-{run_id}.json"')
-    assert exported.json()["test_cases"][0]["title"] == edit["title"]
+    exported_cases = exported.json()["test_cases"]
+    assert exported_cases[0]["title"] == edit["title"]
+    assert added_case["id"] in {case["id"] for case in exported_cases}
+    assert deleted_case_id not in {case["id"] for case in exported_cases}
 
     tasks = client.get(f"/api/runs/{run_id}/developers/bob/tasks").json()
     assert unassigned[0]["test_case_id"] in {t["test_case"]["id"] for t in tasks}

@@ -1,9 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "../api/client";
-import { UNASSIGNED, type ExecutionStatus, type RunDetail, type TestCaseUpdate } from "../api/types";
+import {
+  UNASSIGNED,
+  type ExecutionStatus,
+  type RunDetail,
+  type TestCaseCreate,
+  type TestCaseUpdate,
+} from "../api/types";
 import { CoverageMatrix } from "../components/CoverageMatrix";
 import { LiveConsole } from "../components/LiveConsole";
 import { StatusBadge } from "../components/StatusBadge";
+import { TestCaseCreateForm } from "../components/TestCaseCreateForm";
 import { TestCaseCard } from "../components/TestCaseCard";
 import { buildCoverage } from "../coverage/matrix";
 
@@ -24,6 +31,7 @@ export function ManagerDashboard({ run, logs, liveResults, onChanged }: Props) {
   const [dragOver, setDragOver] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [addingCase, setAddingCase] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -89,6 +97,17 @@ export function ManagerDashboard({ run, logs, liveResults, onChanged }: Props) {
     await onChanged();
   }
 
+  async function addTestCase(draft: TestCaseCreate) {
+    await api.createTestCase(run.id, draft);
+    await onChanged();
+    setAddingCase(false);
+  }
+
+  async function deleteTestCase(caseId: string) {
+    await api.deleteTestCase(run.id, caseId);
+    await onChanged();
+  }
+
   const exhausted = run.validation_failures.some((f) => f.attempt >= 3);
 
   return (
@@ -114,9 +133,16 @@ export function ManagerDashboard({ run, logs, liveResults, onChanged }: Props) {
           {exporting ? "Exporting…" : "Download JSON"}
         </button>
         {step === "coverage" && (
-          <button className="primary" onClick={() => setStep("assign")}>
-            {gapCount > 0 ? `Accept coverage with ${gapCount} gap${gapCount === 1 ? "" : "s"}` : "Accept coverage & assign"}
-          </button>
+          <>
+            {editable && (
+              <button onClick={() => setAddingCase((value) => !value)}>
+                {addingCase ? "Cancel adding" : "Add test case"}
+              </button>
+            )}
+            <button className="primary" onClick={() => setStep("assign")}>
+              {gapCount > 0 ? `Accept coverage with ${gapCount} gap${gapCount === 1 ? "" : "s"}` : "Accept coverage & assign"}
+            </button>
+          </>
         )}
         {step === "assign" && editable && (
           <button className="primary" onClick={approve} disabled={busy}>
@@ -130,12 +156,24 @@ export function ManagerDashboard({ run, logs, liveResults, onChanged }: Props) {
         {exhausted && <p className="warn-text">Retry budget exhausted; some requirements may be uncovered.</p>}
       </section>
 
+      {step === "coverage" && editable && addingCase && (
+        <section className="panel">
+          <h3>Add a manager-authored test case</h3>
+          <TestCaseCreateForm
+            requirements={run.requirements}
+            onCreate={addTestCase}
+            onCancel={() => setAddingCase(false)}
+          />
+        </section>
+      )}
+
       {step === "coverage" && (
         <CoverageMatrix
           run={run}
           liveResults={liveResults}
           editable={editable}
           onSaveTestCase={updateTestCase}
+          onDeleteTestCase={deleteTestCase}
         />
       )}
 

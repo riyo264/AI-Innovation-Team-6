@@ -16,11 +16,18 @@ interface Props {
   liveResults: Record<string, ExecutionStatus>;
   editable: boolean;
   onSaveTestCase: (caseId: string, update: TestCaseUpdate) => Promise<void>;
+  onDeleteTestCase: (caseId: string) => Promise<void>;
 }
 
 type Selection = { kind: "test"; id: string } | { kind: "requirement"; id: string };
 
-export function CoverageMatrix({ run, liveResults, editable, onSaveTestCase }: Props) {
+export function CoverageMatrix({
+  run,
+  liveResults,
+  editable,
+  onSaveTestCase,
+  onDeleteTestCase,
+}: Props) {
   const model = useMemo(
     () => buildCoverage(run.requirements, run.test_cases),
     [run.requirements, run.test_cases],
@@ -102,6 +109,7 @@ export function CoverageMatrix({ run, liveResults, editable, onSaveTestCase }: P
           }
           editable={editable}
           onSaveTestCase={onSaveTestCase}
+          onDeleteTestCase={onDeleteTestCase}
           onClose={() => setSelection(null)}
         />
       )}
@@ -246,6 +254,7 @@ function CoverageDetail({
   status,
   editable,
   onSaveTestCase,
+  onDeleteTestCase,
   onClose,
 }: {
   row: MatrixRow;
@@ -253,16 +262,32 @@ function CoverageDetail({
   status: ExecutionStatus | null;
   editable: boolean;
   onSaveTestCase: (caseId: string, update: TestCaseUpdate) => Promise<void>;
+  onDeleteTestCase: (caseId: string) => Promise<void>;
   onClose: () => void;
 }) {
   const { requirement } = row;
   const [editing, setEditing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   // When a test is selected, show only the criteria it explicitly covers.
   // When a requirement is selected, show all criteria.
   const tracedCriteria: CriterionView[] = test
     ? row.criteria.filter((cv) => cv.coveredBy.includes(test.id))
     : row.criteria;
+
+  async function deleteTestCase() {
+    if (!test || !window.confirm(`Delete ${test.id}: ${test.title}?`)) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await onDeleteTestCase(test.id);
+    } catch (e) {
+      setDeleteError((e as Error).message);
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   return (
     <section className="panel detail-panel">
@@ -271,10 +296,16 @@ function CoverageDetail({
         {test && <span className={`type type-${test.test_type}`}>{test.test_type}</span>}
         {status && <StatusBadge status={status} />}
         {test && editable && !editing && (
-          <button onClick={() => setEditing(true)}>Edit test case</button>
+          <>
+            <button onClick={() => setEditing(true)}>Edit test case</button>
+            <button onClick={deleteTestCase} disabled={deleting}>
+              {deleting ? "Deleting…" : "Delete test case"}
+            </button>
+          </>
         )}
         <button onClick={onClose}>Close</button>
       </div>
+      {deleteError && <p className="bad-text">{deleteError}</p>}
       {editing && test ? (
         <TestCaseEditor
           testCase={test}

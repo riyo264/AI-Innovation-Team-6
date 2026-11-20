@@ -21,9 +21,9 @@ docker compose up --build
 | Postgres     | localhost:5432 (harness / harness) |
 
 Demo flow: **1 · Ingest** → upload `samples/prd_password_reset.md` (team JSON is prefilled) →
-**2 · Review & approve** → inspect coverage, edit a test case if needed, download the run as JSON,
-drag the Unassigned card to someone, then *Approve & Distribute* and watch the console → **3 · Pitch
-dashboard**. Switch *Viewing as* to a developer to see their Kanban.
+**2 · Review & approve** → inspect coverage, add, edit, or delete test cases before approval,
+download the run as JSON, drag the Unassigned card to someone, then *Approve & Distribute* and watch
+the console → **3 · Pitch dashboard**. Switch *Viewing as* to a developer to see their Kanban.
 
 With the mock LLM the sample run gives: 7 requirements (1 flagged ambiguous), 2 schema errors
 self-corrected in 1 retry loop, 14 test cases, 1 Unassigned, and **5 failing tests that match the
